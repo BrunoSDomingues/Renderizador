@@ -17,10 +17,6 @@ import gpu
 # imports extras
 import numpy as np
 
-# Classe para organizar as diferentes matrizes utilizadas
-class Matrix:
-    def __init__(self):
-        self.matrix = np.identity(4)
 
 # Implementação do Algoritmo de Bresenham disponível em http://www.roguebasin.com/index.php?title=Bresenham%27s_Line_Algorithm#Python (com modificações pontuais)
 def get_line(x1, y1, x2, y2):
@@ -109,7 +105,7 @@ def is_inside(point, vertices):
 def triangleSet2D(vertices, color):
     """ Função usada para renderizar TriangleSet2D. """
     r, g, b = [i * 255 for i in color]  # transforma do X3D para o Framebuffer
-    x_max, y_max = 30, 20
+    x_max, y_max = LARGURA, ALTURA
 
     for x in range(x_max):
         for y in range(y_max):
@@ -133,6 +129,17 @@ def triangleSet2D(vertices, color):
                 )  # altera um pixel da imagem
 
 
+# Classe para organizar as diferentes matrizes utilizadas
+class Matrix:
+    def __init__(self):
+        self.matrix = np.array([
+            [1.0, 0, 0, 0],
+            [0, 1.0, 0, 0],
+            [0, 0, 1.0, 0],
+            [0, 0, 0, 1.0]
+        ])
+
+
 def triangleSet(point, color):
     """ Função usada para renderizar TriangleSet. """
     # Nessa função você receberá pontos no parâmetro point, esses pontos são uma lista
@@ -147,28 +154,32 @@ def triangleSet(point, color):
 
     for p in range(len(point)):
         if p % 9 == 0:
-            # Matriz transposta
-            transposed = np.array([[point[p], point[p+3], point[p+6]],
-                                   [point[p+1], point[p+4], point[p+7]],
-                                   [point[p+2], point[p+5], point[p+8]],
-                                   [1.0, 1.0, 1.0, 1.0]])
+            # Matriz dos pontos transposta
+            points = np.array([
+                [point[p], point[p+3], point[p+6]],
+                [point[p+1], point[p+4], point[p+7]],
+                [point[p+2], point[p+5], point[p+8]],
+                [1.0, 1.0, 1.0]
+            ])
             
             # Multiplicando pelas matrizes de transformação, lookat e perspectiva
-            r_triangle = np.matmul(t_matrix.matrix, transposed)
-            r_triangle = np.matmul(l_matrix.matrix, r_triangle)
-            r_triangle = np.matmul(p_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(transform_matrix.matrix, points)
+            r_triangle = np.matmul(lookat_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(perspective_matrix.matrix, r_triangle)
 
             # Normalização
             for i in range(0, 3):
-                if r_triangle[3][i] > 0:
+                if (r_triangle[3][i] > 0):
                     r_triangle[:, i] /= r_triangle[3][i]
 
             # Ajuste para o tamanho da tela
             half_w, half_h = LARGURA/2.0, ALTURA/2.0
-            s_matrix = np.array([half_w, 0, 0, half_w],
-                                [0, -half_h, 0, half_h],
-                                [0, 0, 1.0, 0],
-                                [0, 0, 0, 1.0])
+            s_matrix = np.array([
+                [half_w, 0, 0, half_w],
+                [0, -half_h, 0, half_h],
+                [0, 0, 1.0, 0],
+                [0, 0, 0, 1.0]
+            ])
             triangles.append(np.matmul(s_matrix, r_triangle))
 
     # Rasterização da matriz
@@ -182,25 +193,42 @@ def viewpoint(position, orientation, fieldOfView):
     # câmera virtual. Use esses dados para poder calcular e criar a matriz de projeção
     # perspectiva para poder aplicar nos pontos dos objetos geométricos.
 
-    l_matrix.matrix = np.identity(4)    # Redefine a matriz lookat
-    o_matrix = np.identity(4)           # Matriz de orientação
+    # Reseta a matriz lookat
+    lookat_matrix.matrix = np.array([
+        [1.0, 0, 0, 0],
+        [0, 1.0, 0, 0],
+        [0, 0, 1.0, 0],
+        [0, 0, 0, 1.0]
+    ])
+
+    # Matriz de orientação
+    o_matrix = np.array([
+        [1.0, 0, 0, 0],
+        [0, 1.0, 0, 0],
+        [0, 0, 1.0, 0],
+        [0, 0, 0, 1.0]
+    ])
 
     top = NEAR * np.tan(fieldOfView)
     right = top * (LARGURA/ALTURA)
 
     # Refaz a matriz de perspectiva
-    p_matrix.matrix = np.array([[NEAR/right, 0, 0, 0],
-                                [0, NEAR/top, 0, 0],
-                                [0, 0,-(FAR+NEAR)/(FAR-NEAR), -2*(FAR+NEAR)/(FAR-NEAR)],
-                                [0, 0, -1.0, 0]])
+    perspective_matrix.matrix = np.array([
+        [NEAR/right, 0, 0, 0],
+        [0, NEAR/top, 0, 0],
+        [0, 0,-(FAR+NEAR)/(FAR-NEAR), -2*(FAR*NEAR)/(FAR-NEAR)],
+        [0, 0, -1.0, 0]
+    ])
 
     # Matriz de posição
-    pos_matrix = np.array([[1.0, 0, 0, -position[0]],
-                           [0, 1.0, 0, -position[1]],
-                           [0, 0, 1.0, -position[2]],
-                           [0, 0, 0, 1.0]])
+    pos_matrix = np.array([
+        [1.0, 0, 0, -position[0]],
+        [0, 1.0, 0, -position[1]],
+        [0, 0, 1.0, -position[2]],
+        [0, 0, 0, 1.0]
+    ])
     
-    l_matrix.matrix = np.matmul(o_matrix, pos_matrix)
+    lookat_matrix.matrix = np.matmul(o_matrix, pos_matrix)
 
 
 def transform(translation, scale, rotation):
@@ -213,44 +241,69 @@ def transform(translation, scale, rotation):
     # Quando se entrar em um nó transform se deverá salvar a matriz de transformação dos
     # modelos do mundo em alguma estrutura de pilha.
 
-    t_stack = []    # Pilha temporária
-    t_matrix = np.identity(4)   # Matriz temporária, será usada posteriormente para formar a pilha final
+    # Pilha temporária
+    t_stack = []
+
+    # Matriz temporária, será usada posteriormente para formar a pilha final
+    transform_matrix = np.array([
+        [1.0, 0, 0, 0],
+        [0, 1.0, 0, 0],
+        [0, 0, 1.0, 0],
+        [0, 0, 0, 1.0]
+    ])   
 
 
     if scale:
-        t_stack.append(np.array([[scale[0], 0, 0, 0],
-                                 [0, scale[1], 0, 0],
-                                 [0, 0, scale[2], 0],
-                                 [0, 0, 0, 1]]))
+        t_stack.append(
+            np.array([
+                [scale[0], 0, 0, 0],
+                [0, scale[1], 0, 0],
+                [0, 0, scale[2], 0],
+                [0, 0, 0, 1]
+            ])
+        )
 
-    if translation:
-        t_stack.append(np.array([[1.0, 0, 0, translation[0]],
-                                 [0, 1.0, 0, translation[1]],
-                                 [0, 0, 1.0, translation[2]],
-                                 [0, 0, 0, 1.0]]))
 
     if rotation:
         if rotation[0]:
-            t_stack.append(np.array([[1.0,0,0,0],
-                                     [0,np.cos(rotation[3]),-np.sin(rotation[3]),0],
-                                     [0,np.sin(rotation[3]),np.cos(rotation[3]),0],
-                                     [0,0,0,1.0]]))
+            t_stack.append(
+                np.array([
+                    [1.0, 0, 0, 0],
+                    [0, np.cos(rotation[3]), -np.sin(rotation[3]), 0],
+                    [0, np.sin(rotation[3]), np.cos(rotation[3]), 0],
+                    [0, 0, 0, 1.0]
+                ])
+            )
 
         elif rotation[1]:
-            t_stack.append(np.array([[np.cos(rotation[3]),0,np.sin(rotation[3]),0],
-                                     [0,1.0,0,0],
-                                     [-np.sin(rotation[3]),0,np.cos(rotation[3]),0],
-                                     [0,0,0,1.0]]))
+            t_stack.append(np.array([
+                [np.cos(rotation[3]),0,np.sin(rotation[3]),0],
+                [0, 1.0, 0, 0],
+                [-np.sin(rotation[3]), 0, np.cos(rotation[3]), 0],
+                [0, 0, 0, 1.0]
+            ]))
+
         else:
             t_stack.append(np.array([[np.cos(rotation[3]),-np.sin(rotation[3]),0,0],
                                      [np.sin(rotation[3]),np.cos(rotation[3]),0,0],
                                      [0,0,1.0,0],
                                      [0,0,0,1.0]]))
 
-    while (t_stack):
-        t_matrix = np.matmul(t_stack.pop(), t_matrix)
+    
+    if translation:
+        t_stack.append(
+            np.array([
+                [1.0, 0, 0, translation[0]],
+                [0, 1.0, 0, translation[1]],
+                [0, 0, 1.0, translation[2]],
+                [0, 0, 0, 1.0]
+            ])
+        )
 
-    stack.append(t_matrix)
+    while (t_stack):
+        transform_matrix = np.matmul(t_stack.pop(), transform_matrix)
+
+    stack.append(transform_matrix)
 
 
 def _transform():
@@ -261,7 +314,7 @@ def _transform():
     # pilha implementada.
 
     while (stack):
-        t_matrix.matrix = np.matmul(stack.pop(), t_matrix.matrix)
+        transform_matrix.matrix = np.matmul(stack.pop(), transform_matrix.matrix)
 
 
 def triangleStripSet(point, stripCount, color):
@@ -280,15 +333,17 @@ def triangleStripSet(point, stripCount, color):
         if (p % 3 == 0) and (p >= 9) and (p < (len(point)-8)):
 
             # Matriz transposta
-            transposed = np.array([[point[p], point[p+3], point[p+6]],
-                                   [point[p+1], point[p+4], point[p+7]],
-                                   [point[p+2], point[p+5], point[p+8]],
-                                   [1.0, 1.0, 1.0, 1.0]])
+            points = np.array([
+                [point[p], point[p+3], point[p+6]],
+                [point[p+1], point[p+4], point[p+7]],
+                [point[p+2], point[p+5], point[p+8]],
+                [1.0, 1.0, 1.0]
+            ])
             
             # Multiplicando pelas matrizes de transformação, lookat e perspectiva
-            r_triangle = np.matmul(t_matrix.matrix, transposed)
-            r_triangle = np.matmul(l_matrix.matrix, r_triangle)
-            r_triangle = np.matmul(p_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(transform_matrix.matrix, points)
+            r_triangle = np.matmul(lookat_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(perspective_matrix.matrix, r_triangle)
 
             # Normalização
             for i in range(0, 3):
@@ -297,10 +352,12 @@ def triangleStripSet(point, stripCount, color):
 
             # Ajuste para o tamanho da tela
             half_w, half_h = LARGURA/2.0, ALTURA/2.0
-            s_matrix = np.array([half_w, 0, 0, half_w],
-                                [0, -half_h, 0, half_h],
-                                [0, 0, 1.0, 0],
-                                [0, 0, 0, 1.0])
+            s_matrix = np.array([
+                [half_w, 0, 0, half_w],
+                [0, -half_h, 0, half_h],
+                [0, 0, 1.0, 0],
+                [0, 0, 0, 1.0]
+            ])
             triangles.append(np.matmul(s_matrix, r_triangle))
     
     # Rasterização da matriz
@@ -328,15 +385,17 @@ def indexedTriangleStripSet(point, index, color):
         if (p % 3 == 0) and (p >= 9) and (p < (len(point)-8)):
 
             # Matriz transposta
-            transposed = np.array([[point[p], point[p+3], point[p+6]],
-                                   [point[p+1], point[p+4], point[p+7]],
-                                   [point[p+2], point[p+5], point[p+8]],
-                                   [1.0, 1.0, 1.0, 1.0]])
+            points = np.array([
+                [point[p], point[p+3], point[p+6]],
+                [point[p+1], point[p+4], point[p+7]],
+                [point[p+2], point[p+5], point[p+8]],
+                [1.0, 1.0, 1.0]
+            ])
             
             # Multiplicando pelas matrizes de transformação, lookat e perspectiva
-            r_triangle = np.matmul(t_matrix.matrix, transposed)
-            r_triangle = np.matmul(l_matrix.matrix, r_triangle)
-            r_triangle = np.matmul(p_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(transform_matrix.matrix, points)
+            r_triangle = np.matmul(lookat_matrix.matrix, r_triangle)
+            r_triangle = np.matmul(perspective_matrix.matrix, r_triangle)
 
             # Normalização
             for i in range(0, 3):
@@ -345,10 +404,12 @@ def indexedTriangleStripSet(point, index, color):
 
             # Ajuste para o tamanho da tela
             half_w, half_h = LARGURA/2.0, ALTURA/2.0
-            s_matrix = np.array([half_w, 0, 0, half_w],
-                                [0, -half_h, 0, half_h],
-                                [0, 0, 1.0, 0],
-                                [0, 0, 0, 1.0])
+            s_matrix = np.array([
+                [half_w, 0, 0, half_w],
+                [0, -half_h, 0, half_h],
+                [0, 0, 1.0, 0],
+                [0, 0, 0, 1.0]
+            ])
             triangles.append(np.matmul(s_matrix, r_triangle))
     
     # Rasterização da matriz
@@ -365,41 +426,47 @@ def box(size, color):
     # essa caixa você vai provavelmente querer tesselar ela em triângulos, para isso
     # encontre os vértices e defina os triângulos.
 
-    points = [[size[0]/2,size[1]/2,size[2]/2],
-              [size[0]/2,-size[1]/2,size[2]/2],
-              [size[0]/2,-size[1]/2,-size[2]/2],
-              [size[0]/2,size[1]/2,-size[2]/2],
-              [-size[0]/2,-size[1]/2,-size[2]/2],
-              [-size[0]/2,size[1]/2,-size[2]/2],
-              [-size[0]/2,size[1]/2,size[2]/2],
-              [-size[0]/2,-size[1]/2,size[2]/2]]
+    points = [
+        [size[0]/2, size[1]/2, size[2]/2],
+        [size[0]/2, -size[1]/2, size[2]/2],
+        [size[0]/2, -size[1]/2, -size[2]/2],
+        [size[0]/2, size[1]/2, -size[2]/2],
+        [-size[0]/2, -size[1]/2, -size[2]/2],
+        [-size[0]/2, size[1]/2, -size[2]/2],
+        [-size[0]/2, size[1]/2, size[2]/2],
+        [-size[0]/2, -size[1]/2, size[2]/2]
+    ]
 
-    render_triangles = [[points[0],points[1],points[2]],
-                        [points[0],points[2],points[3]],
-                        [points[2],points[3],points[4]],
-                        [points[3],points[4],points[5]],
-                        [points[4],points[5],points[6]],
-                        [points[4],points[6],points[7]],
-                        [points[6],points[7],points[1]],
-                        [points[6],points[1],points[0]],
-                        [points[0],points[6],points[5]],
-                        [points[0],points[3],points[5]],
-                        [points[1],points[2],points[4]],
-                        [points[1],points[7],points[4]]]
+    render_triangles = [
+        [points[0], points[1], points[2]],
+        [points[0], points[2], points[3]],
+        [points[2], points[3], points[4]],
+        [points[3], points[4], points[5]],
+        [points[4], points[5], points[6]],
+        [points[4], points[6], points[7]],
+        [points[6], points[7], points[1]],
+        [points[6], points[1], points[0]],
+        [points[0], points[6], points[5]],
+        [points[0], points[3], points[5]],
+        [points[1], points[2], points[4]],
+        [points[1], points[7], points[4]]
+    ]
 
     triangles = []
 
     for r in render_triangles:
         # Matriz de cada triângulo
-        matrix = np.array([[r[0][0],r[1][0],r[2][0]],
-                           [r[0][1],r[1][1],r[2][1]],
-                           [r[0][2],r[1][2],r[2][2]],
-                           [1.0, 1.0, 1.0]]))
+        matrix = np.array([
+            [r[0][0], r[1][0], r[2][0]],
+            [r[0][1], r[1][1], r[2][1]],
+            [r[0][2], r[1][2], r[2][2]],
+            [1.0, 1.0, 1.0]
+        ])
 
         # Multiplicando pelas matrizes de transformação, lookat e perspectiva
-        r_triangle = np.matmul(t_matrix.matrix, matrix)
-        r_triangle = np.matmul(l_matrix.matrix, r_triangle)
-        r_triangle = np.matmul(p_matrix.matrix, r_triangle)
+        r_triangle = np.matmul(transform_matrix.matrix, matrix)
+        r_triangle = np.matmul(lookat_matrix.matrix, r_triangle)
+        r_triangle = np.matmul(perspective_matrix.matrix, r_triangle)
 
         # Normalização
         for i in range(0, 3):
@@ -408,10 +475,12 @@ def box(size, color):
 
         # Ajuste para o tamanho da tela
         half_w, half_h = LARGURA/2.0, ALTURA/2.0
-        s_matrix = np.array([half_w, 0, 0, half_w],
-                            [0, -half_h, 0, half_h],
-                            [0, 0, 1.0, 0],
-                            [0, 0, 0, 1.0])
+        s_matrix = np.array([
+            [half_w, 0, 0, half_w],
+            [0, -half_h, 0, half_h],
+            [0, 0, 1.0, 0],
+            [0, 0, 0, 1.0]
+        ])
         triangles.append(np.matmul(s_matrix, r_triangle))
     
     # Rasterização da matriz
@@ -452,8 +521,8 @@ def indexedFaceSet(coord, coordIndex, colorPerVertex, color, colorIndex, texCoor
         print("\t Matriz com image = {0}".format(image))
 
 
-LARGURA = 300
-ALTURA = 200
+LARGURA = 150
+ALTURA = 100
 NEAR = 0.5
 FAR = 100
 
@@ -461,14 +530,14 @@ FAR = 100
 if __name__ == "__main__":
 
     stack = []              # Stack original
-    t_matrix = Matrix()     # Matriz de transformação
-    l_matrix = Matrix()     # Matriz lookat
-    p_matrix = Matrix()     # Matriz perspectiva
+    transform_matrix = Matrix()     # Matriz de transformação
+    lookat_matrix = Matrix()     # Matriz lookat
+    perspective_matrix = Matrix()     # Matriz perspectiva
 
     # Valores padrão da aplicação
     width = LARGURA
     height = ALTURA
-    x3d_file = "exemplo9.x3d"
+    x3d_file = "exemplo6.x3d"
     image_file = "tela.png"
 
     # Tratando entrada de parâmetro
