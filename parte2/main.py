@@ -1,13 +1,14 @@
 import gpu
+import math as m
 import numpy as np
 
 from parte1.main import triangleSet2D
-from params import aux_arrays, t_array, stack
+from params import aux_arrays, transform_array, stack
 from .functions import (
-    make_triangle_set_array,
-    transform_triangle,
+    make_triangle_array,
+    make_screen_array,
     get_vertexes,
-    make_strips_array,
+    make_triangle_strips_array,
     get_box_faces,
 )
 
@@ -26,13 +27,51 @@ def triangleSet(point, color):
     # print("TriangleSet : pontos = {0}".format(point)) # imprime no terminal pontos
 
     # Monta a lista de triângulos
-    triangles = make_triangle_set_array(point)
+    triangles = []
 
+    for i in range(int(len(point)/9)):
+        # Cria um triângulo e coloca na lista
+        triangles.append(make_triangle_array(point, i))
+    
+    # Define as matrizes auxiliares utilizadas no processo    
+    lookAt_array = aux_arrays[0]                # Matriz lookAt
+    perspective_array = aux_arrays[1]           # Matriz perspectiva
+    screen_array = make_screen_array()          # Matriz das coordenadas da tela
+    
     # Iterando pela lista
-    for t in triangles:
-        # O método get_vertexes faz as transformações para o triângulo e gera a lista de vértices
-        # do triângulo transformado. Após isso, basta utilizar o triangleSet2D
-        triangleSet2D(get_vertexes(t), color)
+    for triangle in triangles:
+        # Transformações do triângulo
+        
+        # 1a transformação: das coordenadas do objeto para as do mundo
+        t1 = np.matmul(transform_array, triangle)
+        
+        # 2a transformação: das coordenadas do mundo para as da câmera
+        t2 = np.matmul(lookAt_array, t1)
+
+        # 3a transformação: das coordenadas da câmera para perspectiva
+        t3 = np.matmul(perspective_array, t2)
+        
+        
+        # Normalizando t3
+        normalized = np.array(np.zeros((4, 3)))
+        
+        for i in range(3):
+            normalized[:, i] = t3[:, i]/t3[-1, i]
+            
+
+        # Última transformação: da perspectiva para as coordenadas da tela
+        transformed = np.matmul(screen_array, normalized)
+        
+        # Não sei porque, mas sem este adder, as coordenadas estão saindo da tela de desenho.
+        for i in range(2):
+            adder = 200/(i+1)
+            transformed[i,:] = [t+adder for t in transformed[i, :]]        
+        
+        # O método get_vertexes gera a lista de vértices do triângulo transformado
+        vertexes = get_vertexes(transformed)
+        
+        # Por fim, usar o triangleSet2D
+        triangleSet2D(vertexes, color)
 
 
 def viewpoint(position, orientation, fieldOfView):
@@ -47,29 +86,36 @@ def viewpoint(position, orientation, fieldOfView):
     global aux_arrays
 
     # Matriz de orientação
-    ori_array = np.identity(4)
+    ori_array = np.array(
+        [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ]
+    )
 
     # Matriz de posição
     pos_array = np.array(
         [
-            [1.0, 0, 0, -position[0]],
-            [0, 1.0, 0, -position[1]],
-            [0, 0, 1.0, -position[2]],
-            [0, 0, 0, 1.0],
+            [1, 0, 0, -position[0]],
+            [0, 1, 0, -position[1]],
+            [0, 0, 1, -position[2]],
+            [0, 0, 0, 1],
         ]
     )
 
     # Matriz lookAt
-    l_array = np.matmul(ori_array, pos_array)
+    lookAt_array = np.matmul(ori_array, pos_array)
 
     # Matriz de projeção perspectiva
-    p_array = np.array(
-        [[0.5, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, -1.01, -1.005], [0, 0, -1.00, 0]]
+    perspective_array = np.array(
+        [[0.5, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1.01, -1.005], [0, 0, -1, 0]]
     )
 
-    # Adiciona as matrizes 'lookAt' e 'p_array' na lista aux_arrays
-    aux_arrays.append(l_array)
-    aux_arrays.append(p_array)
+    # Adiciona as matrizes na lista aux_arrays
+    aux_arrays.append(lookAt_array)
+    aux_arrays.append(perspective_array)
 
 
 def transform(translation, scale, rotation):
@@ -85,28 +131,29 @@ def transform(translation, scale, rotation):
     # print("Transform : ", end = '')
 
     # Chama a pilha e a matriz de transformação
-    global stack, t_array
+    global stack
+    global transform_array
 
     if translation:
         # Adiciona-se a matriz de transformação na pilha pois ela irá sofrer alterações
-        stack.append(t_array)
+        stack.append(transform_array)
 
         # Matriz de translação
         translation_array = np.array(
             [
-                [1.0, 0, 0, translation[0]],
-                [0, 1.0, 0, translation[1]],
-                [0, 0, 1.0, translation[2]],
-                [0, 0, 0, 1.0],
+                [1, 0, 0, translation[0]],
+                [0, 1, 0, translation[1]],
+                [0, 0, 1, translation[2]],
+                [0, 0, 0, 1],
             ]
         )
 
         # Novo valor da matriz de transformação
-        t_array = np.matmul(translation_array, t_array)
+        transform_array = np.matmul(translation_array, transform_array)
 
     if scale:
         # Adiciona-se a matriz de transformação na pilha pois ela irá sofrer alterações
-        stack.append(t_array)
+        stack.append(transform_array)
 
         # Matriz de escala
         scale_array = np.array(
@@ -114,65 +161,65 @@ def transform(translation, scale, rotation):
                 [scale[0], 0, 0, 0],
                 [0, scale[1], 0, 0],
                 [0, 0, scale[2], 0],
-                [0, 0, 0, 1.0],
+                [0, 0, 0, 1],
             ]
         )
 
         # Novo valor da matriz de transformação
-        t_array = np.matmul(scale_array, t_array)
+        transform_array = np.matmul(scale_array, transform_array)
 
     if rotation:
         # rotation[3] é o ângulo de rotação em radianos
         if rotation[0]:
             # Adiciona-se a matriz de transformação na pilha pois ela irá sofrer alterações
-            stack.append(t_array)
+            stack.append(transform_array)
 
             # Matriz de rotação no eixo x
             rotation_array = np.array(
                 [
-                    [1.0, 0, 0, 0],
-                    [0, np.cos(rotation[3]), -np.sin(rotation[3]), 0],
-                    [0, np.sin(rotation[3]), np.cos(rotation[3]), 0],
-                    [0, 0, 0, 1.0],
+                    [1, 0, 0, 0],
+                    [0, m.cos(rotation[3]), -m.sin(rotation[3]), 0],
+                    [0, m.sin(rotation[3]), m.cos(rotation[3]), 0],
+                    [0, 0, 0, 1],
                 ]
             )
 
             # Novo valor da matriz de transformação
-            t_array = np.matmul(rotation_array, t_array)
+            transform_array = np.matmul(rotation_array, transform_array)
 
         elif rotation[1]:
-            # Adiciona-se a matriz de transformação na pilha pois ela irá sofrer alterações
-            stack.append(t_array)
+            # Adiciona-se a 1.0matriz de transformação na pilha pois ela irá sofrer alterações
+            stack.append(transform_array)
 
             # Matriz de rotação no eixo y
             rotation_array = np.array(
                 [
-                    [np.cos(rotation[3]), 0, np.sin(rotation[3]), 0],
-                    [0, 1.0, 0, 0],
-                    [-np.sin(rotation[3]), 0, np.cos(rotation[3]), 0],
-                    [0, 0, 0, 1.0],
+                    [m.cos(rotation[3]), 0, m.sin(rotation[3]), 0],
+                    [0, 1, 0, 0],
+                    [-m.sin(rotation[3]), 0, m.cos(rotation[3]), 0],
+                    [0, 0, 0, 1],
                 ]
             )
 
             # Novo valor da matriz de transformação
-            t_array = np.matmul(rotation_array, t_array)
+            transform_array = np.matmul(rotation_array, transform_array)
 
         elif rotation[2]:
             # Adiciona-se a matriz de transformação na pilha pois ela irá sofrer alterações
-            stack.append(t_array)
+            stack.append(transform_array)
 
             # Matriz de rotação no eixo z
             rotation_array = np.array(
                 [
-                    [np.cos(rotation[3]), -np.sin(rotation[3]), 0, 0],
-                    [np.sin(rotation[3]), np.cos(rotation[3]), 0, 0],
-                    [0, 0, 1.0, 0],
-                    [0, 0, 0, 1.0],
+                    [m.cos(rotation[3]), -m.sin(rotation[3]), 0, 0],
+                    [m.sin(rotation[3]), m.cos(rotation[3]), 0, 0],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1],
                 ]
             )
 
             # Novo valor da matriz de transformação
-            t_array = np.matmul(rotation_array, t_array)
+            transform_array = np.matmul(rotation_array, transform_array)
 
 
 def _transform():
@@ -185,13 +232,17 @@ def _transform():
     # print("Saindo de Transform")
 
     # Chama a pilha e a matriz de transformação
-    global stack, t_array
+    global stack
+    global transform_array
 
-    # t_array recebe o valor da última matriz inserida na pilha (este valor deve ser removido da pilha)
-    t_array = stack.pop()
+    # transform_array recebe o valor da última matriz inserida na pilha
+    transform_array = stack[-1]
+    
+    # Remove a última matriz que foi inserida na pilha
+    del stack[-1]
+    
 
-
-def triangleStripSet(point, stripCount, color, text=False):
+def triangleStripSet(point, stripCount, color):
     """ Função usada para renderizar TriangleStripSet. """
     # A função triangleStripSet é usada para desenhar tiras de triângulos interconectados,
     # você receberá as coordenadas dos pontos no parâmetro point, esses pontos são uma
@@ -206,16 +257,47 @@ def triangleStripSet(point, stripCount, color, text=False):
     #    print("strip[{0}] = {1} ".format(i, strip), end = '') # imprime no terminal
 
     # Chama a matriz de transformação e a lista de arrays auxiliares (para obter matriz lookAt e matriz perspectiva)
-    global t_array, aux_arrays
+    global transform_array, aux_arrays
+    
+    # Monta a lista com os arrays das tiras dos triângulos
+    triangle_strips = []
+    
+    for i in range(int(stripCount[0] - 2)):
+        triangle_strips.append(make_triangle_strips_array(point, i))
 
-    triangle_strips = make_strips_array(point, int(stripCount[0] - 2))
-
+    # Define as matrizes auxiliares utilizadas no processo    
+    lookAt_array, perspective_array = aux_arrays[0], aux_arrays[1]
+    screen_array = make_screen_array()
+    
     # Iterando pela lista
-    for s in triangle_strips:
-        # O método get_vertexes faz as transformações para as tiras do triângulo e gera a
-        # lista de vértices das tiras do triângulo transformado. Após isso, basta utilizar o triangleSet2D
-        triangleSet2D(get_vertexes(s), color)
+    for strip in triangle_strips:
+        # Transformações da tira
+        
+        # 1a transformação: das coordenadas do objeto para as do mundo
+        t1 = np.matmul(transform_array, strip)
 
+        # 2a transformação: das coordenadas do mundo para as da câmera
+        t2 = np.matmul(lookAt_array, t1)
+
+        # 3a transformação: das coordenadas da câmera para perspectiva
+        t3 = np.matmul(perspective_array, t2)
+
+        # Normalizando t3
+        normalized = np.zeros((4, 3))
+        
+        for i in range(3):
+            normalized[:, i] = t3[:, i]/t3[-1, i]
+
+        # Última transformação: da perspectiva para as coordenadas da tela
+        transformed = np.matmul(screen_array, normalized)
+        
+        # Não sei porque, mas sem este adder, as coordenadas estão saindo da tela de desenho.
+        for i in range(2):
+            adder = 200/(i+1)
+            transformed[i,:] = [t+adder for t in transformed[i, :]]      
+        
+        # O método get_vertexes gera a lista de vértices da tira transformada
+        triangleSet2D(get_vertexes(transformed), color)
 
 def indexedTriangleStripSet(point, index, color):
     """ Função usada para renderizar IndexedTriangleStripSet. """
@@ -233,15 +315,47 @@ def indexedTriangleStripSet(point, index, color):
     # print("IndexedTriangleStripSet : pontos = {0}, index = {1}".format(point, index)) # imprime no terminal pontos
 
     # Chama a matriz de transformação e a lista de arrays auxiliares (para obter matriz lookAt e matriz perspectiva)
-    global t_array, aux_arrays
+    global transform_array, aux_arrays
 
-    indexed_strips = make_strips_array(point, int(max(index) - 1))
+    # Monta a lista com os arrays das tiras indexadas dos triângulos
+    indexed_strips = []
+    
+    for i in range(int(max(index) - 1)):
+        indexed_strips.append(make_triangle_strips_array(point, i))
 
+    # Define as matrizes auxiliares utilizadas no processo    
+    lookAt_array, perspective_array = aux_arrays[0], aux_arrays[1]
+    screen_array = make_screen_array()
+    
     # Iterando pela lista
-    for i in indexed_strips:
-        # O método get_vertexes faz as transformações para as tiras indexadas do triângulo e gera a
-        # lista de vértices das tiras indexadas do triângulo transformado. Após isso, basta utilizar o triangleSet2D
-        triangleSet2D(get_vertexes(i), color)
+    for indexed in indexed_strips:
+        # Transformações da tira indexada
+        
+        # 1a transformação: das coordenadas do objeto para as do mundo
+        t1 = np.matmul(transform_array, indexed)
+
+        # 2a transformação: das coordenadas do mundo para as da câmera
+        t2 = np.matmul(lookAt_array, t1)
+
+        # 3a transformação: das coordenadas da câmera para perspectiva
+        t3 = np.matmul(perspective_array, t2)
+
+        # Normalizando t3
+        normalized = np.zeros((4, 3))
+        
+        for i in range(3):
+            normalized[:, i] = t3[:, i]/t3[-1, i]
+
+        # Última transformação: da perspectiva para as coordenadas da tela
+        transformed = np.matmul(screen_array, normalized)
+        
+        # Não sei porque, mas sem este adder, as coordenadas estão saindo da tela de desenho.
+        for i in range(2):
+            adder = 200/(i+1)
+            transformed[i,:] = [t+adder for t in transformed[i, :]]    
+        
+        # O método get_vertexes gera a lista de vértices da tira indexada transformada
+        triangleSet2D(get_vertexes(transformed), color)
 
 
 def box(size, color):

@@ -19,9 +19,9 @@ def polyline2D(lineSegments, color):
     """ Função usada para renderizar Polyline2D. """
 
     r, g, b = [i * 255 for i in color]  # transforma do X3D para o Framebuffer
-    x0, y0, x1, y1 = lineSegments[:5]
+    x0, y0, x1, y1 = lineSegments[:4]
 
-    pontos_bresenham = [int(pb) for pb in get_line(int(x0), int(y0), int(x1), int(y1))]
+    pontos_bresenham = [(int(pb[0]), int(pb[1])) for pb in get_line(int(x0), int(y0), int(x1), int(y1))]
 
     for p in pontos_bresenham:
         x, y = p[0], p[1]
