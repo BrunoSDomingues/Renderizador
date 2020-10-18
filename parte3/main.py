@@ -1,9 +1,9 @@
 import numpy as np
 import gpu
 
-from params import WIDTH, HEIGHT
+from params import WIDTH, HEIGHT, aux_arrays, transform_array
 from parte1.functions import is_inside
-from parte2.functions import get_vertexes
+from parte2.functions import make_screen_array, get_vertexes
 
 
 def indexedFaceSet(
@@ -36,10 +36,14 @@ def indexedFaceSet(
     # textura para o poligono, para isso, use as coordenadas de textura e depois aplique a
     # cor da textura conforme a posição do mapeamento. Dentro da classe GPU já está
     # implementadado um método para a leitura de imagens.
-
+    print("Entrei IndexedFaceSet!")
     if coord:
-        points = [coord[3 * p : 3 * p + 3] for p in range(int(len(coord) / 3))]
+        # Criando lista de pontos
+        points = []
+        for p in range(int(len(coord)/3)):
+            points.append(coord[3 * p : 3 * p + 3])
 
+        # Criando lista de triângulos e de vértices
         triangles = []
         vertexes = []
 
@@ -57,7 +61,7 @@ def indexedFaceSet(
                                 [points[v0][0], points[v1][0], points[v2][0]],
                                 [points[v0][1], points[v1][1], points[v2][1]],
                                 [points[v0][2], points[v1][2], points[v2][2]],
-                                [1.0, 1.0, 1.0],
+                                [1, 1, 1],
                             ]
                         )
                     )
@@ -66,9 +70,16 @@ def indexedFaceSet(
                 vertexes = []
 
     if colorPerVertex:
-        points = [coord[3 * p : 3 * p + 3] for p in range(int(len(coord) / 3))]
-        colors = [color[3 * c : 3 * c + 3] for c in range(int(len(color) / 3))]
-
+        # Criando lista de pontos e de cores
+        points = []
+        for p in range(int(len(coord)/3)):
+            points.append(coord[3 * p : 3 * p + 3])
+        
+        colors = []
+        for c in range(int(len(color)/3)):
+            colors.append(color[3 * c : 3 * c + 3])
+        
+        # Criando lista de triângulos e de cores dos triângulos
         triangles = []
         c_triangles = []
 
@@ -81,7 +92,7 @@ def indexedFaceSet(
                         [points[v0][0], points[v1][0], points[v2][0]],
                         [points[v0][1], points[v1][1], points[v2][1]],
                         [points[v0][2], points[v1][2], points[v2][2]],
-                        [1.0, 1.0, 1.0],
+                        [1, 1, 1],
                     ]
                 )
             )
@@ -91,13 +102,20 @@ def indexedFaceSet(
             c_triangles.append([colors[c0], colors[c1], colors[c2]])
 
     if texCoord:
+        print(coordIndex)
+        print('\n')
         image = gpu.GPU.load_texture(current_texture[0])
+        
+        # Criando lista de pontos e de texturas
+        points = []
+        for p in range(int(len(coord)/3)):
+            points.append(coord[3 * p : 3 * p + 3])
+        
+        t_points = []
+        for tp in range(int(len(texCoord)/2)):
+            t_points.append(texCoord[2 * tp : 2 * tp + 2])
 
-        points = [coord[3 * p : 3 * p + 3] for p in range(int(len(coord) / 3))]
-        t_points = [
-            texCoord[2 * tp : 2 * tp + 2] for tp in range(int(len(texCoord) / 2))
-        ]
-
+        # Criando lista de triângulos e de texturas dos triângulos
         triangles = []
         t_triangles = []
 
@@ -110,7 +128,7 @@ def indexedFaceSet(
                         [points[v0][0], points[v1][0], points[v2][0]],
                         [points[v0][1], points[v1][1], points[v2][1]],
                         [points[v0][2], points[v1][2], points[v2][2]],
-                        [1.0, 1.0, 1.0],
+                        [1, 1, 1],
                     ]
                 )
             )
@@ -121,28 +139,67 @@ def indexedFaceSet(
 
     if current_texture:
         image = gpu.GPU.load_texture(current_texture[0])
+        
+    # Define as matrizes auxiliares utilizadas no processo    
+    lookAt_array = aux_arrays[0]                # Matriz lookAt
+    perspective_array = aux_arrays[1]           # Matriz perspectiva
+    screen_array = make_screen_array() 
 
     for i in range(len(triangles)):
-        # O método get_vertexes faz as transformações para o triângulo e gera a lista de vértices
-        # do triângulo transformado. Separou-se a lista em seis variáveis de modo a obter alfa, beta e gamma.
-        x1, y1, x2, y2, x3, y3 = get_vertexes(triangles[i])
+        triangle = triangles[i]
+        
+        # Transformações do triângulo
+        
+        # 1a transformação: das coordenadas do objeto para as do mundo
+        t1 = np.matmul(transform_array, triangle)
+        
+        # 2a transformação: das coordenadas do mundo para as da câmera
+        t2 = np.matmul(lookAt_array, t1)
 
+        # 3a transformação: das coordenadas da câmera para perspectiva
+        t3 = np.matmul(perspective_array, t2)
+        
+        # Normalizando t3
+        normalized = np.array(np.zeros((4, 3)))
+        
+        for i in range(3):
+            normalized[:, i] = t3[:, i]/t3[-1, i]
+            
+        # Última transformação: da perspectiva para as coordenadas da tela
+        transformed = np.matmul(screen_array, normalized)
+
+        # Não sei porque, mas sem este adder, as coordenadas estão saindo da tela de desenho.
+        for i in range(2):
+            adder = 200/(i+1)
+            transformed[i,:] = [t+adder for t in transformed[i, :]]        
+        
+        # O método get_vertexes gera a lista de vértices do triângulo transformado
+        vtx = get_vertexes(transformed)
+        
         for x in range(WIDTH):
             for y in range(HEIGHT):
-                if is_inside((x, y), [x1, y1, x2, y2, x3, y3]):
-                    alpha = (-(x - x2) * (y3 - y2) + (y - y2) * (x3 - x2)) / (
-                        -(x1 - x2) * (y3 - y2) + (y1 - y2) * (x3 - x2)
-                    )
-                    beta = (-(x - x3) * (y1 - y3) + (y - y3) * (x1 - x3)) / (
-                        -(x2 - x3) * (y1 - y3) + (y2 - y3) * (x1 - x3)
-                    )
-                    gamma = 1 - alpha - beta
-
+                if is_inside((x, y), vtx):
                     if coord:
                         gpu.GPU.set_pixel(x, y, 255, 255, 255)
 
                     if colorPerVertex:
                         ct = c_triangles[i]
+                        
+                        a_num = ((y - vtx[3]) * (vtx[4] - vtx[2])) - ((x - vtx[2]) * (vtx[5] - vtx[3]))
+                        a_den = ((vtx[1] - vtx[3]) * (vtx[4] - vtx[2])) - ((vtx[0] - vtx[2]) * (vtx[5] - vtx[3]))
+                        if a_den != 0:
+                            alpha = a_num/a_den
+                        else:
+                            alpha = 0
+                        
+                        b_num = (y - vtx[5]) * (vtx[0] - vtx[4]) - (x - vtx[4]) * (vtx[1] - vtx[5])
+                        b_den = (vtx[3] - vtx[5]) * (vtx[0] - vtx[4]) - (vtx[2] - vtx[4]) * (vtx[1] - vtx[5])
+                        if b_den != 0:
+                            beta = b_num/b_den
+                        else:
+                            beta = 0
+                            
+                        gamma = 1 - alpha - beta
 
                         r = (
                             alpha * ct[0][0] + beta * ct[1][0] + gamma * ct[2][0]
@@ -153,11 +210,27 @@ def indexedFaceSet(
                         b = (
                             alpha * ct[0][2] + beta * ct[1][2] + gamma * ct[2][2]
                         ) * 255
-
+                        
                         gpu.GPU.set_pixel(x, y, r, g, b)
 
                     if texCoord:
                         t0, t1, t2 = t_triangles[i]
+                        
+                        a_num = ((y - vtx[3]) * (vtx[4] - vtx[2])) - ((x - vtx[2]) * (vtx[5] - vtx[3]))
+                        a_den = ((vtx[1] - vtx[3]) * (vtx[4] - vtx[2])) - ((vtx[0] - vtx[2]) * (vtx[5] - vtx[3]))
+                        if a_den != 0:
+                            alpha = a_num/a_den
+                        else:
+                            alpha = 0
+                        
+                        b_num = (y - vtx[5]) * (vtx[0] - vtx[4]) - (x - vtx[4]) * (vtx[1] - vtx[5])
+                        b_den = (vtx[3] - vtx[5]) * (vtx[0] - vtx[4]) - (vtx[2] - vtx[4]) * (vtx[1] - vtx[5])
+                        if b_den != 0:
+                            beta = b_num/b_den
+                        else:
+                            beta = 0
+                            
+                        gamma = 1 - alpha - beta
 
                         u = int(
                             alpha * t0[0] * 199
@@ -168,7 +241,7 @@ def indexedFaceSet(
                             alpha * t0[1] * 199
                             + beta * t1[1] * 199
                             + gamma * t2[1] * 199
-                        )
+                        )                        
 
                         gpu.GPU.set_pixel(
                             x, y, image[-v][u][0], image[-v][u][1], image[-v][u][2]
